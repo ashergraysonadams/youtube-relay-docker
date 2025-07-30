@@ -1,5 +1,5 @@
-creds/
-secrets/
-token.pickle
-.env
-__pycache__/
+//creds/
+/secrets/
+//token.pickle
+//.env
+//__pycache__/
