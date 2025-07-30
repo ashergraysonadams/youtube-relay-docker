@@ -1,10 +1,14 @@
 import os, pickle, subprocess, time
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from dotenv import load_dotenv
+
+load_dotenv()
 
 TOKEN_PATH = "creds/token.pickle"
 CLIENT_SECRET = "secrets/client_secret.json"
 SCOPES = ["https://www.googleapis.com/auth/youtube.readonly"]
+STREAM_KEY = os.getenv("STREAM_KEY")
 
 def authenticate():
     creds = None
@@ -39,18 +43,20 @@ def get_playlist_videos(youtube, playlist_id):
 
 def stream_video(url):
     print(f"🎬 بث الفيديو: {url}")
-    proc1 = subprocess.Popen(["yt-dlp", "-f", "best", url, "-o", "-"], stdout=subprocess.PIPE)
-    proc2 = subprocess.Popen(["ffmpeg", "-re", "-i", "-", "-f", "flv", "rtmp://a.rtmp.youtube.com/live2/YOUR_STREAM_KEY"], stdin=proc1.stdout)
-    proc2.wait()
+    try:
+        proc1 = subprocess.Popen(["yt-dlp", "-f", "best", url, "-o", "-"], stdout=subprocess.PIPE)
+        proc2 = subprocess.Popen(["ffmpeg", "-re", "-i", "-", "-f", "flv", f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"], stdin=proc1.stdout)
+        proc2.wait()
+    except Exception as e:
+        print(f"❌ خطأ أثناء البث: {e}")
 
 def main():
-    youtube = authenticate()
     playlist_id = os.getenv("PLAYLIST_ID")
-    if playlist_id:
-        urls = get_playlist_videos(youtube, playlist_id)
-    else:
-        with open("videos.txt", "r") as f:
-            urls = [line.strip() for line in f if line.strip()]
+    youtube = authenticate() if playlist_id else None
+    urls = get_playlist_videos(youtube, playlist_id) if playlist_id else [
+        line.strip() for line in open("videos.txt", "r") if line.strip()
+    ]
+
     while True:
         for url in urls:
             stream_video(url)
