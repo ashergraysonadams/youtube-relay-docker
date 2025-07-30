@@ -1,0 +1,9 @@
+youtube-relay-oauth/
+├── Dockerfile
+├── requirements.txt
+├── stream.py
+├── videos.txt              ← روابط الفيديوهات اليدوية (اختياري)
+├── secrets/
+│   └── client_secret.json  ← بيانات اعتماد OAuth من Google
+├── creds/
+│   └── token.pickle        ← يتم إنشاؤه تلقائيًا بعد تسجيل الدخول
