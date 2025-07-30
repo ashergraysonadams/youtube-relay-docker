@@ -1,20 +1,10 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
-# تقليل حجم الصورة
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg && \
-    rm -rf /var/lib/apt/lists/*
-
-# تثبيت المتطلبات
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# إعداد المشروع
 WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
 COPY . .
 
-# متغيرات البيئة (اختياري)
-ENV PYTHONDONTWRITEBYTECODE=1
-
-# تنفيذ السكربت عند التشغيل
 CMD ["python", "stream.py"]
