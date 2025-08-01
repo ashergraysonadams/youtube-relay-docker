@@ -1,7 +1,6 @@
 google-auth-oauthlib
 google-api-python-client
-youtube-dl
-yt-dlp
+yt-dlp==2024.04.09
 python-dotenv
 ffmpeg-python         # ← إذا كنت تستخدم ffmpeg من بايثون
 requests              # ← للاتصالات البسيطة
