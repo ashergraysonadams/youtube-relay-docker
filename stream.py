@@ -6,21 +6,18 @@ import re
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-import yt_dlp
+import youtube_dl  # ← تم الاستبدال
 
-# ✅ في حالة التشغيل المحلي فقط
 if os.getenv("RENDER") != "true":
     from dotenv import load_dotenv
     load_dotenv()
 
-# إعداد المسارات والثوابت
 TOKEN_PATH     = "creds/token.pickle"
 CLIENT_SECRET  = "secrets/client_secret.json"
 COOKIES_FILE   = "secrets/cookies.txt"
 VIDEO_FILE     = "videos.txt"
 SCOPES         = ["https://www.googleapis.com/auth/youtube.readonly"]
 
-# تحميل من البيئة
 STREAM_KEY     = os.getenv("STREAM_KEY")
 PLAYLIST_ID    = os.getenv("PLAYLIST_ID")
 
@@ -36,7 +33,6 @@ def authenticate():
             return None
         flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET, SCOPES)
         creds = flow.run_local_server(port=0)
-
         os.makedirs(os.path.dirname(TOKEN_PATH), exist_ok=True)
         with open(TOKEN_PATH, "wb") as f:
             pickle.dump(creds, f)
@@ -54,12 +50,10 @@ def get_playlist_videos(youtube, playlist_id):
                 maxResults=50,
                 pageToken=next_page_token
             ).execute()
-
             items = res.get("items", [])
             for item in items:
                 video_id = item["contentDetails"]["videoId"]
                 videos.append(f"https://www.youtube.com/watch?v={video_id}")
-
             next_page_token = res.get("nextPageToken")
             if not next_page_token:
                 break
@@ -80,7 +74,7 @@ def get_video_duration(url):
             "skip_download": True,
             "forcejson": True
         }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             return info.get("duration", 0)
     except Exception as e:
@@ -91,7 +85,7 @@ def stream_video(url):
     print(f"\n🎬 بدء البث: {url}\n")
     try:
         proc1 = subprocess.Popen(
-            ["yt-dlp", "--cookies", COOKIES_FILE, "-f", "best", "-o", "-", url],
+            ["youtube-dl", "--cookies", COOKIES_FILE, "-f", "best", "-o", "-", url],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
@@ -144,10 +138,9 @@ def main():
         wait_time = duration - 60 if duration > 60 else duration
         time.sleep(wait_time)
 
-        # تجهيز الفيديو القادم قبل نهاية الحالي بدقيقة
         if i + 1 < len(urls):
             print("⏳ تجهيز الفيديو التالي...")
-            subprocess.Popen(["yt-dlp", "--cookies", COOKIES_FILE, "-f", "best", "-o", "-", urls[i + 1]],
+            subprocess.Popen(["youtube-dl", "--cookies", COOKIES_FILE, "-f", "best", "-o", "-", urls[i + 1]],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         remaining = 60 if duration > 60 else 0
