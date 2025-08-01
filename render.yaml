@@ -2,12 +2,12 @@ services:
   - type: worker
     name: youtube-relay-worker
     env: docker
-    region: oregon  # اختر أقرب منطقة جغرافية لك
-    plan: starter  # يمكنك تغييرها حسب الحاجة
+    region: oregon
+    plan: starter
     dockerfilePath: ./Dockerfile
     autoDeploy: true
     envVars:
       - key: STREAM_KEY
-        value: your_youtube_stream_key
+        value: your_actual_youtube_stream_key
       - key: PLAYLIST_ID
-        value: your_playlist_id
+        value: your_actual_playlist_id
