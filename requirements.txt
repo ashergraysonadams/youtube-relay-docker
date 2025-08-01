@@ -2,3 +2,6 @@ google-auth-oauthlib
 google-api-python-client
 yt-dlp
 python-dotenv
+ffmpeg-python         # ← إذا كنت تستخدم ffmpeg من بايثون
+requests              # ← للاتصالات البسيطة
+aiohttp               # ← إذا كان مشروعك غير متزامن (async)
