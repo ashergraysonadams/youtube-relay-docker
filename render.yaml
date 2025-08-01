@@ -10,3 +10,4 @@ services:
       - key: STREAM_KEY
         value: your_youtube_stream_key
       - key: PLAYLIST_ID
+        value: your_playlist_id
