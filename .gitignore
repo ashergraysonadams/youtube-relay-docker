@@ -3,3 +3,4 @@ secrets/
 token.pickle
 .env
 __pycache__/
+cookies.txt
