@@ -82,7 +82,7 @@ def stream_video(url):
 
         proc2.wait()
 
-        # اختياري: عرض الأخطاء في حال وجودها
+        # عرض الأخطاء إن وجدت
         _, err1 = proc1.communicate()
         _, err2 = proc2.communicate()
 
@@ -112,7 +112,7 @@ def main():
         if not os.path.exists(VIDEO_FILE):
             print("⚠️ ملف videos.txt غير موجود")
             return
-        with open(VIDEO_FILE, "r") as f:
+        with open(VIDEO_FILE, "r", encoding="utf-8") as f:
             urls = [line.strip() for line in f if line.strip() and "watch?v=" in line]
 
     if not urls:
