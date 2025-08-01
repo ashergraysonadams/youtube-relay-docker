@@ -6,6 +6,7 @@ import re
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+import yt_dlp
 
 # ✅ في حالة التشغيل المحلي فقط
 if os.getenv("RENDER") != "true":
@@ -72,6 +73,20 @@ def clean_url(url):
         return f"https://www.youtube.com/watch?v={match.group(1)}"
     return None
 
+def get_video_duration(url):
+    try:
+        ydl_opts = {
+            "quiet": True,
+            "skip_download": True,
+            "forcejson": True
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            return info.get("duration", 0)
+    except Exception as e:
+        print(f"⚠️ تعذر استخراج مدة الفيديو: {e}")
+        return 0
+
 def stream_video(url):
     print(f"\n🎬 بدء البث: {url}\n")
     try:
@@ -87,18 +102,11 @@ def stream_video(url):
             stderr=subprocess.PIPE
         )
 
-        proc2.wait()
-
-        _, err1 = proc1.communicate()
-        _, err2 = proc2.communicate()
-
-        if err1:
-            print(f"🧾 yt-dlp error:\n{err1.decode('utf-8')}")
-        if err2:
-            print(f"🧾 ffmpeg error:\n{err2.decode('utf-8')}")
+        return proc1, proc2
 
     except Exception as e:
         print(f"❌ فشل البث: {e}")
+        return None, None
 
 def main():
     if not STREAM_KEY:
@@ -121,7 +129,6 @@ def main():
         with open(VIDEO_FILE, "r", encoding="utf-8") as f:
             raw_urls = [line.strip() for line in f if line.strip()]
 
-    # تنقية وتحويل الروابط لصيغة موحدة
     urls = [clean_url(link) for link in raw_urls if clean_url(link)]
 
     if not urls:
@@ -129,9 +136,26 @@ def main():
         return
 
     print(f"✅ تم العثور على {len(urls)} رابطاً للبث")
-    for url in urls:
-        stream_video(url)
-        time.sleep(5)
+
+    for i, url in enumerate(urls):
+        duration = get_video_duration(url)
+        proc1, proc2 = stream_video(url)
+
+        wait_time = duration - 60 if duration > 60 else duration
+        time.sleep(wait_time)
+
+        # تجهيز الفيديو القادم قبل نهاية الحالي بدقيقة
+        if i + 1 < len(urls):
+            print("⏳ تجهيز الفيديو التالي...")
+            subprocess.Popen(["yt-dlp", "--cookies", COOKIES_FILE, "-f", "best", "-o", "-", urls[i + 1]],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        remaining = 60 if duration > 60 else 0
+        time.sleep(remaining)
+
+        if proc1: proc1.terminate()
+        if proc2: proc2.terminate()
+        print("✅ انتهى البث لهذا الفيديو")
 
 if __name__ == "__main__":
     main()
