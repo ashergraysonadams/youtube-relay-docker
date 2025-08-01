@@ -6,7 +6,7 @@ import re
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-import youtube_dl  # ← تم الاستبدال
+import yt_dlp  # ← ✅ استبدال youtube_dl
 
 if os.getenv("RENDER") != "true":
     from dotenv import load_dotenv
@@ -20,6 +20,7 @@ SCOPES         = ["https://www.googleapis.com/auth/youtube.readonly"]
 
 STREAM_KEY     = os.getenv("STREAM_KEY")
 PLAYLIST_ID    = os.getenv("PLAYLIST_ID")
+USER_AGENT     = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/115 Safari/537.36"  # ← ✅ إضافة يوزر أجنت
 
 def authenticate():
     creds = None
@@ -72,9 +73,11 @@ def get_video_duration(url):
         ydl_opts = {
             "quiet": True,
             "skip_download": True,
-            "forcejson": True
+            "forcejson": True,
+            "user_agent": USER_AGENT,
+            "cookies": COOKIES_FILE
         }
-        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             return info.get("duration", 0)
     except Exception as e:
@@ -85,13 +88,22 @@ def stream_video(url):
     print(f"\n🎬 بدء البث: {url}\n")
     try:
         proc1 = subprocess.Popen(
-            ["youtube-dl", "--cookies", COOKIES_FILE, "-f", "best", "-o", "-", url],
+            [
+                "yt-dlp",
+                "--cookies", COOKIES_FILE,
+                "--user-agent", USER_AGENT,
+                "-f", "best",
+                "-o", "-", url
+            ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
 
         proc2 = subprocess.Popen(
-            ["ffmpeg", "-re", "-i", "-", "-f", "flv", f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"],
+            [
+                "ffmpeg", "-re", "-i", "-", "-f", "flv",
+                f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"
+            ],
             stdin=proc1.stdout,
             stderr=subprocess.PIPE
         )
@@ -140,8 +152,11 @@ def main():
 
         if i + 1 < len(urls):
             print("⏳ تجهيز الفيديو التالي...")
-            subprocess.Popen(["youtube-dl", "--cookies", COOKIES_FILE, "-f", "best", "-o", "-", urls[i + 1]],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen([
+                "yt-dlp", "--cookies", COOKIES_FILE,
+                "--user-agent", USER_AGENT,
+                "-f", "best", "-o", "-", urls[i + 1]
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         remaining = 60 if duration > 60 else 0
         time.sleep(remaining)
