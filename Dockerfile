@@ -1,9 +1,11 @@
 # استخدم صورة بايثون خفيفة
 FROM python:3.10-slim
 
-# تثبيت الأدوات المطلوبة مثل ffmpeg
+# تثبيت الأدوات المطلوبة مثل ffmpeg و youtube-dl
 RUN apt-get update && \
-    apt-get install -y ffmpeg && \
+    apt-get install -y ffmpeg curl && \
+    curl -L https://yt-dl.org/downloads/latest/youtube-dl -o /usr/local/bin/youtube-dl && \
+    chmod a+rx /usr/local/bin/youtube-dl && \
     rm -rf /var/lib/apt/lists/*
 
 # تحديد مجلد العمل داخل الحاوية
