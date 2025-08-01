@@ -2,11 +2,12 @@ import os
 import pickle
 import subprocess
 import time
+import re
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# ✅ في حالة التشغيل المحلي فقط: يمكن تحميل من ملف .env
+# ✅ في حالة التشغيل المحلي فقط
 if os.getenv("RENDER") != "true":
     from dotenv import load_dotenv
     load_dotenv()
@@ -18,7 +19,7 @@ COOKIES_FILE   = "secrets/cookies.txt"
 VIDEO_FILE     = "videos.txt"
 SCOPES         = ["https://www.googleapis.com/auth/youtube.readonly"]
 
-# 📦 تحميل القيم من متغيرات البيئة
+# تحميل من البيئة
 STREAM_KEY     = os.getenv("STREAM_KEY")
 PLAYLIST_ID    = os.getenv("PLAYLIST_ID")
 
@@ -30,7 +31,7 @@ def authenticate():
 
     if not creds or not creds.valid:
         if os.getenv("RENDER") == "true":
-            print("⚠️ لا يمكن إجراء المصادقة اليدوية في بيئة Render، تأكد من تحميل token.pickle مسبقًا.")
+            print("⚠️ لا يمكن المصادقة اليدوية داخل Render. تأكد من أن token.pickle موجود.")
             return None
         flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET, SCOPES)
         creds = flow.run_local_server(port=0)
@@ -62,8 +63,14 @@ def get_playlist_videos(youtube, playlist_id):
             if not next_page_token:
                 break
     except HttpError as e:
-        print(f"❌ خطأ في استدعاء YouTube API: {e}")
+        print(f"❌ خطأ من YouTube API: {e}")
     return videos
+
+def clean_url(url):
+    match = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})", url)
+    if match:
+        return f"https://www.youtube.com/watch?v={match.group(1)}"
+    return None
 
 def stream_video(url):
     print(f"\n🎬 بدء البث: {url}\n")
@@ -82,7 +89,6 @@ def stream_video(url):
 
         proc2.wait()
 
-        # عرض الأخطاء إن وجدت
         _, err1 = proc1.communicate()
         _, err2 = proc2.communicate()
 
@@ -92,36 +98,40 @@ def stream_video(url):
             print(f"🧾 ffmpeg error:\n{err2.decode('utf-8')}")
 
     except Exception as e:
-        print(f"❌ خطأ أثناء البث: {e}")
+        print(f"❌ فشل البث: {e}")
 
 def main():
     if not STREAM_KEY:
-        print("⚠️ STREAM_KEY غير معرف في البيئة - تأكد من إضافته في Render Dashboard")
+        print("⚠️ STREAM_KEY غير موجود في Render Dashboard")
         return
 
     if not os.path.exists(COOKIES_FILE):
-        print("⚠️ ملف الكوكيز غير موجود: secrets/cookies.txt")
+        print("⚠️ لا يوجد ملف cookies.txt في مجلد secrets/")
         return
 
     if PLAYLIST_ID:
         youtube = authenticate()
         if youtube is None:
             return
-        urls = get_playlist_videos(youtube, PLAYLIST_ID)
+        raw_urls = get_playlist_videos(youtube, PLAYLIST_ID)
     else:
         if not os.path.exists(VIDEO_FILE):
             print("⚠️ ملف videos.txt غير موجود")
             return
         with open(VIDEO_FILE, "r", encoding="utf-8") as f:
-            urls = [line.strip() for line in f if line.strip() and "watch?v=" in line]
+            raw_urls = [line.strip() for line in f if line.strip()]
+
+    # تنقية وتحويل الروابط لصيغة موحدة
+    urls = [clean_url(link) for link in raw_urls if clean_url(link)]
 
     if not urls:
-        print("⚠️ لا توجد روابط للبث")
+        print("⚠️ لا توجد روابط صالحة للبث")
         return
 
+    print(f"✅ تم العثور على {len(urls)} رابطاً للبث")
     for url in urls:
         stream_video(url)
-        time.sleep(5)  # ⏳ انتظار قصير بين كل فيديو
+        time.sleep(5)
 
 if __name__ == "__main__":
     main()
