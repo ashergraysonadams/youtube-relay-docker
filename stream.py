@@ -2,28 +2,28 @@
 # coding=utf-8
 """
 Stream playlist / videos.txt to YouTube Live.
-– cookies taken from COOKIES_B64 (base64 string in env)
-– supports PLAYLIST_ID (YouTube API) أو ملف videos.txt
-– pre-downloads next video 60 s before current ends
+– uses cookies from COOKIES_B64 (base64 string in env)
+– supports PLAYLIST_ID (YouTube API) or local videos.txt
+– downloads next video 60 seconds before current ends
 """
 
-import os, base64, pickle, subprocess, time, re, tempfile, random
+import os, base64, pickle, subprocess, time, re, tempfile
 from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery   import build
-from googleapiclient.errors      import HttpError
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 import yt_dlp
 
-# ══════════════ 1) ثوابت ومتغيّرات البيئة ═════════════════
-TOKEN_PATH   = "creds/token.pickle"
-CLIENT_SECRET= "secrets/client_secret.json"
-VIDEO_FILE   = "videos.txt"
-SCOPES       = ["https://www.googleapis.com/auth/youtube.readonly"]
+# ══════════════ 1) إعداد البيئة ═══════════════════════════════
+TOKEN_PATH     = "creds/token.pickle"
+CLIENT_SECRET  = "secrets/client_secret.json"
+VIDEO_FILE     = "videos.txt"
+SCOPES         = ["https://www.googleapis.com/auth/youtube.readonly"]
 
-STREAM_KEY   = os.getenv("STREAM_KEY")
-PLAYLIST_ID  = os.getenv("PLAYLIST_ID")
-PROXY        = os.getenv("PROXY_URL")
+STREAM_KEY     = os.getenv("STREAM_KEY")
+PLAYLIST_ID    = os.getenv("PLAYLIST_ID")
+PROXY          = os.getenv("PROXY_URL")
 
-USER_AGENT   = (
+USER_AGENT     = (
     "Mozilla/5.0 (Linux; Android 11; Pixel 5) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Mobile Safari/537.36"
 )
@@ -32,7 +32,7 @@ if os.getenv("RENDER") != "true":
     from dotenv import load_dotenv
     load_dotenv()
 
-# ══════════════ 2) فكّ الكوكيز من COOKIES_B64 ═════════════
+# ══════════════ 2) فك الكوكيز من COOKIES_B64 ══════════════════
 def decode_cookies():
     b64 = os.getenv("COOKIES_B64", "")
     if not b64:
@@ -44,7 +44,7 @@ def decode_cookies():
 
 COOKIES_FILE = decode_cookies()
 
-# ══════════════ 3) إعداد خيارات yt-dlp الافتراضيّة ════════
+# ══════════════ 3) إعداد yt-dlp (بدون بروكسي هنا) ════════════
 yt_opts_base = {
     "cookies":      COOKIES_FILE,
     "user_agent":   USER_AGENT,
@@ -56,10 +56,9 @@ yt_opts_base = {
     "no_color":     True,
     "concurrent_fragment_downloads": 1,
 }
-if PROXY:
-    yt_opts_base["proxy"] = PROXY
+# لا نضيف proxy هنا إطلاقًا
 
-# ══════════════ 4) وظائف مساعدة ═══════════════════════════
+# ══════════════ 4) وظائف مساعده ═══════════════════════════════
 def authenticate():
     creds = None
     if os.path.exists(TOKEN_PATH):
@@ -100,22 +99,22 @@ def video_info(url):
     try:
         return yt_dlp.YoutubeDL(opts).extract_info(url, download=False)
     except Exception as e:
-        print(f"⚠️  تعذّر جلب معلومات {url}: {e}")
+        print(f"⚠️ تعذّر جلب معلومات {url}: {e}")
         return {"duration": 0}
 
 def prefetch(url, path):
-    """تنزيل الفيديو القادم بخلفيّة صامتة (mp4)"""
+    """تنزيل الفيديو بصمت باستخدام البروكسي فقط أثناء التحميل"""
     cmd = [
         "yt-dlp", "-f", yt_opts_base["format"], "--merge-output-format", "mp4",
         "--cookies", COOKIES_FILE, "--user-agent", USER_AGENT,
-        "-o", path, url, "--quiet", "--retries", "10",
+        "-o", path, url, "--quiet", "--retries", "10"
     ]
     if PROXY:
-        cmd += ["--proxy", PROXY]
+        cmd += ["--proxy", PROXY]  # ← البروكسي يستخدم فقط هنا
     return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
 def stream(path_or_url):
-    """بث ملف/رابط مباشرةً إلى YouTube Live"""
+    """بث الفيديو إلى YouTube Live"""
     cmd = [
         "ffmpeg", "-re", "-i", path_or_url,
         "-c:v", "copy", "-c:a", "aac",
@@ -123,13 +122,13 @@ def stream(path_or_url):
     ]
     return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
-# ══════════════ 5) الدالة الرئيسة ═════════════════════════
+# ══════════════ 5) الدالة الرئيسة ═══════════════════════════
 def main():
     if not STREAM_KEY:
-        print("⚠️  STREAM_KEY غير مضاف في البيئة")
+        print("⚠️ STREAM_KEY غير مضاف في البيئة")
         return
 
-    # ❶ تحضير قائمة الروابط
+    # ❶ جلب قائمة الفيديوهات
     if PLAYLIST_ID:
         yt = authenticate()
         if not yt:
@@ -137,17 +136,17 @@ def main():
         raw = playlist_urls(yt, PLAYLIST_ID)
     else:
         if not os.path.exists(VIDEO_FILE):
-            print("⚠️  videos.txt غير موجود")
+            print("⚠️ videos.txt غير موجود")
             return
         raw = [l.strip() for l in open(VIDEO_FILE, encoding="utf-8") if l.strip()]
 
     urls = [u for u in map(clean, raw) if u]
     if not urls:
-        print("⚠️  لا توجد روابط صالحة")
+        print("⚠️ لا توجد روابط صالحة")
         return
     print(f"✅ {len(urls)} فيديو جاهز للبث")
 
-    # ❷ مجلّد مؤقّت للفيديوهات المسبقة
+    # ❷ تحميل الفيديوهات وتشغيل البث
     cache_dir = tempfile.mkdtemp(prefix="yt_cache_")
     pre_dl_proc = None
 
@@ -156,36 +155,30 @@ def main():
         duration = info.get("duration", 0) or 0
         cur_path = os.path.join(cache_dir, f"video_{idx}.mp4")
 
-        # حمّل الملف إن لم يكن موجودًا
         if not os.path.exists(cur_path):
-            print(f"⬇️  تنزيل الفيديو {idx+1}/{len(urls)}")
+            print(f"⬇️ تنزيل الفيديو {idx+1}/{len(urls)}")
             prefetch(url, cur_path).wait()
 
-        # أبـدأ البث
         print(f"🚀 بدء البث: {url}")
         proc_stream = stream(cur_path)
 
-        # حضّر الفيديو التالي
+        # تنزيل الفيديو التالي مسبقًا
         if idx + 1 < len(urls):
             next_url  = urls[idx + 1]
             next_path = os.path.join(cache_dir, f"video_{idx+1}.mp4")
-            time.sleep(max(duration - 60, 0))   # انتظر حتى دقيقة قبل النهاية
+            time.sleep(max(duration - 60, 0))
 
             if not os.path.exists(next_path):
                 print("⏳ تنزيل الفيديو التالي…")
                 pre_dl_proc = prefetch(next_url, next_path)
         else:
-            # آخر فيديو
             time.sleep(duration)
 
-        # انتظر آخر 60 ثانية أو صفر
         time.sleep(60 if duration > 60 else 0)
 
-        # أوقف البث
         proc_stream.terminate()
         print("✅ انتهى بث الفيديو الحالي")
 
-        # تأكد من اكتمال أي تحميل معلق
         if pre_dl_proc:
             pre_dl_proc.wait()
             pre_dl_proc = None
