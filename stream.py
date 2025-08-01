@@ -12,13 +12,15 @@ if os.getenv("RENDER") != "true":
     load_dotenv()
 
 # إعداد المسارات والثوابت
-TOKEN_PATH    = "creds/token.pickle"
-CLIENT_SECRET = "secrets/client_secret.json"
-SCOPES        = ["https://www.googleapis.com/auth/youtube.readonly"]
+TOKEN_PATH     = "creds/token.pickle"
+CLIENT_SECRET  = "secrets/client_secret.json"
+COOKIES_FILE   = "secrets/cookies.txt"
+VIDEO_FILE     = "videos.txt"
+SCOPES         = ["https://www.googleapis.com/auth/youtube.readonly"]
 
 # 📦 تحميل القيم من متغيرات البيئة (Render Dashboard)
-STREAM_KEY  = os.getenv("STREAM_KEY")
-PLAYLIST_ID = os.getenv("PLAYLIST_ID")
+STREAM_KEY     = os.getenv("STREAM_KEY")
+PLAYLIST_ID    = os.getenv("PLAYLIST_ID")
 
 def authenticate():
     creds = None
@@ -64,7 +66,7 @@ def stream_video(url):
     print(f"\n🎬 بدء البث: {url}\n")
     try:
         proc1 = subprocess.Popen(
-            ["yt-dlp", "-f", "best", "-o", "-", url],
+            ["yt-dlp", "--cookies", COOKIES_FILE, "-f", "best", "-o", "-", url],
             stdout=subprocess.PIPE
         )
 
@@ -82,15 +84,18 @@ def main():
         print("⚠️ STREAM_KEY غير معرف في البيئة - تأكد من إضافته في Render Dashboard")
         return
 
+    if not os.path.exists(COOKIES_FILE):
+        print("⚠️ ملف الكوكيز غير موجود: secrets/cookies.txt")
+        return
+
     if PLAYLIST_ID:
         youtube = authenticate()
         urls = get_playlist_videos(youtube, PLAYLIST_ID)
     else:
-        video_file = "videos.txt"
-        if not os.path.exists(video_file):
+        if not os.path.exists(VIDEO_FILE):
             print("⚠️ ملف videos.txt غير موجود")
             return
-        with open(video_file, "r") as f:
+        with open(VIDEO_FILE, "r") as f:
             urls = [line.strip() for line in f if line.strip()]
 
     if not urls:
