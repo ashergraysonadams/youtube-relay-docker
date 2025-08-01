@@ -18,7 +18,7 @@ COOKIES_FILE   = "secrets/cookies.txt"
 VIDEO_FILE     = "videos.txt"
 SCOPES         = ["https://www.googleapis.com/auth/youtube.readonly"]
 
-# 📦 تحميل القيم من متغيرات البيئة (Render Dashboard)
+# 📦 تحميل القيم من متغيرات البيئة
 STREAM_KEY     = os.getenv("STREAM_KEY")
 PLAYLIST_ID    = os.getenv("PLAYLIST_ID")
 
@@ -29,6 +29,9 @@ def authenticate():
             creds = pickle.load(f)
 
     if not creds or not creds.valid:
+        if os.getenv("RENDER") == "true":
+            print("⚠️ لا يمكن إجراء المصادقة اليدوية في بيئة Render، تأكد من تحميل token.pickle مسبقًا.")
+            return None
         flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET, SCOPES)
         creds = flow.run_local_server(port=0)
 
@@ -67,15 +70,27 @@ def stream_video(url):
     try:
         proc1 = subprocess.Popen(
             ["yt-dlp", "--cookies", COOKIES_FILE, "-f", "best", "-o", "-", url],
-            stdout=subprocess.PIPE
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
         )
 
         proc2 = subprocess.Popen(
             ["ffmpeg", "-re", "-i", "-", "-f", "flv", f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"],
-            stdin=proc1.stdout
+            stdin=proc1.stdout,
+            stderr=subprocess.PIPE
         )
 
         proc2.wait()
+
+        # اختياري: عرض الأخطاء في حال وجودها
+        _, err1 = proc1.communicate()
+        _, err2 = proc2.communicate()
+
+        if err1:
+            print(f"🧾 yt-dlp error:\n{err1.decode('utf-8')}")
+        if err2:
+            print(f"🧾 ffmpeg error:\n{err2.decode('utf-8')}")
+
     except Exception as e:
         print(f"❌ خطأ أثناء البث: {e}")
 
@@ -90,13 +105,15 @@ def main():
 
     if PLAYLIST_ID:
         youtube = authenticate()
+        if youtube is None:
+            return
         urls = get_playlist_videos(youtube, PLAYLIST_ID)
     else:
         if not os.path.exists(VIDEO_FILE):
             print("⚠️ ملف videos.txt غير موجود")
             return
         with open(VIDEO_FILE, "r") as f:
-            urls = [line.strip() for line in f if line.strip()]
+            urls = [line.strip() for line in f if line.strip() and "watch?v=" in line]
 
     if not urls:
         print("⚠️ لا توجد روابط للبث")
@@ -104,7 +121,7 @@ def main():
 
     for url in urls:
         stream_video(url)
-        time.sleep(5)
+        time.sleep(5)  # ⏳ انتظار قصير بين كل فيديو
 
 if __name__ == "__main__":
     main()
