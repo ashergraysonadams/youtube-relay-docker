@@ -14,7 +14,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery   import build
 import yt_dlp
 
-# ── مسارات ثابتة ───────────────────────────────────────────────────────────
+# ── المسارات الأساسية ─────────────────────────────────────────────────────
 TOKEN_PATH, CLIENT_SECRET = "creds/token.pickle", "secrets/client_secret.json"
 VIDEO_FILE, SCOPES        = "videos.txt", ["https://www.googleapis.com/auth/youtube.readonly"]
 
@@ -23,7 +23,7 @@ STREAM_KEY   = os.getenv("STREAM_KEY")
 PLAYLIST_ID  = os.getenv("PLAYLIST_ID")
 PROXY        = os.getenv("PROXY_URL")
 
-# وضع الخادم المجاني + وقت البَفر بالثواني
+# وضع Render المجاني + وقت البَفر بالثواني
 FREE_RENDER_MODE = os.getenv("FREE_RENDER_MODE", "true").lower() == "true"
 BUFFER_DELAY     = int(os.getenv("STREAM_DELAY", "60"))           # ⏳ دقيقة افتراضيًا
 
@@ -45,7 +45,7 @@ def decode_cookies() -> str:
 
 COOKIES_FILE = decode_cookies()
 
-# ── خيارات yt-dlp الافتراضية ───────────────────────────────────────────────
+# ── إعدادات yt-dlp ──────────────────────────────────────────────────────────
 yt_opts_base = {
     "cookies": COOKIES_FILE,
     "user_agent": USER_AGENT,
@@ -110,9 +110,9 @@ def prefetch(u, path):
 
 # ── إعداد أمر FFmpeg حسب وضع الخادم ────────────────────────────────────────
 def build_ffmpeg_cmd(path):
-    if FREE_RENDER_MODE:                     # إعدادات خفيفة 480p ~1.2 Mbps
-        vf, preset, vb, ab = "scale=-2:480,fps=30", "ultrafast", "1200k", "96k"
-    else:                                    # إعدادات أعلى جودة 720p ~2.5 Mbps
+    if FREE_RENDER_MODE:                     # إعدادات أخف: 360p ~750 kbps
+        vf, preset, vb, ab = "scale=-2:360,fps=24", "ultrafast", "700k", "64k"
+    else:                                    # إعدادات أعلى جودة 720p
         vf, preset, vb, ab = "scale=-2:720,fps=30", "veryfast", "2500k", "128k"
 
     buf = str(int(vb.rstrip('k')) * 2) + "k"
