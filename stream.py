@@ -111,7 +111,7 @@ def prefetch(url, path):
     ]
     if PROXY:
         cmd += ["--proxy", PROXY]
-    return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    return subprocess.Popen(cmd)
 
 def stream(path_or_url):
     cmd = [
@@ -121,7 +121,20 @@ def stream(path_or_url):
         "-c:a", "aac",
         "-f", "flv", f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"
     ]
-    return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    print("📤 أمر ffmpeg المستخدم:")
+    print(" ".join(cmd))
+    return subprocess.Popen(cmd)
+
+def test_local_stream():
+    cmd = [
+        "ffmpeg", "-re", "-i", "test.mp4",
+        "-c:v", "libx264", "-preset", "veryfast",
+        "-g", "60", "-keyint_min", "60",
+        "-c:a", "aac",
+        "-f", "flv", f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"
+    ]
+    print("📡 تشغيل بث محلي لاختبار RTMP…")
+    subprocess.run(cmd)
 
 # ═══════ 5) الدالة الرئيسة ═══════
 def main():
@@ -172,7 +185,7 @@ def main():
                 pre_dl_proc = prefetch(next_url, next_path)
                 pre_dl_proc.wait()
 
-            time.sleep(60)  # نكمل الدقيقة الأخيرة
+            time.sleep(60)
         else:
             time.sleep(duration)
 
