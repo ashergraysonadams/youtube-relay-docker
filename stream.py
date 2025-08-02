@@ -1,40 +1,34 @@
 #!/usr/bin/env python3
 # coding=utf-8
 """
-Stream playlist / videos.txt to YouTube Live – نسخة صديقة للخادم المجاني في Render
+Stream playlist / videos.txt to YouTube Live – نسخة مرتّبة لخوادم Render المجانية
 ---------------------------------------------------------------------------
-• Cookies تؤخذ من COOKIES_B64 (base64)
-• تدعم PLAYLIST_ID أو videos.txt
-• ينزّل الفيديو التالي قبل 60 ث من نهاية الحالي
-• تضيف «بَفر» (STREAM_DELAY) قبل بدء رفع RTMP لتحسين جودة YouTube
+• يدعم PLAYLIST_ID أو videos.txt
+• لا يبدأ البث إلا بعد اكتمال تحميل الفيديو
+• يبدأ تحميل الفيديو التالي فقط بعد انتهاء بث الحالي
+• يدعم COOKIES بصيغة base64 من env
 """
 
 import os, base64, pickle, time, re, tempfile, subprocess
 from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery   import build
+from googleapiclient.discovery import build
 import yt_dlp
 
-# ── المسارات الأساسية ─────────────────────────────────────────────────────
+# ── إعدادات ثابتة ──────────────────────────────────────────────────────────
 TOKEN_PATH, CLIENT_SECRET = "creds/token.pickle", "secrets/client_secret.json"
 VIDEO_FILE, SCOPES        = "videos.txt", ["https://www.googleapis.com/auth/youtube.readonly"]
+STREAM_KEY                = os.getenv("STREAM_KEY")
+PLAYLIST_ID               = os.getenv("PLAYLIST_ID")
+PROXY                     = os.getenv("PROXY_URL")
+FREE_RENDER_MODE          = os.getenv("FREE_RENDER_MODE", "true").lower() == "true"
+BUFFER_DELAY              = int(os.getenv("STREAM_DELAY", "60"))
+USER_AGENT                = ("Mozilla/5.0 (Linux; Android 11; Pixel 5) "
+                             "AppleWebKit/537.36 (KHTML, مثل Gecko) Chrome/122 Mobile Safari/537.36")
 
-# ── متغيّرات بيئة أساسية ───────────────────────────────────────────────────
-STREAM_KEY   = os.getenv("STREAM_KEY")
-PLAYLIST_ID  = os.getenv("PLAYLIST_ID")
-PROXY        = os.getenv("PROXY_URL")
-
-# وضع Render المجاني + وقت البَفر بالثواني
-FREE_RENDER_MODE = os.getenv("FREE_RENDER_MODE", "true").lower() == "true"
-BUFFER_DELAY     = int(os.getenv("STREAM_DELAY", "60"))           # ⏳ دقيقة افتراضيًا
-
-USER_AGENT = ("Mozilla/5.0 (Linux; Android 11; Pixel 5) "
-              "AppleWebKit/537.36 (KHTML, مثل Gecko) Chrome/122 Mobile Safari/537.36")
-
-if os.getenv("RENDER") != "true":   # محليًا حمّل .env
+if os.getenv("RENDER") != "true":
     from dotenv import load_dotenv
     load_dotenv()
 
-# ── تحويل COOKIES_B64 إلى ملف ──────────────────────────────────────────────
 def decode_cookies() -> str:
     b64 = os.getenv("COOKIES_B64", "")
     if not b64:
@@ -45,7 +39,6 @@ def decode_cookies() -> str:
 
 COOKIES_FILE = decode_cookies()
 
-# ── إعدادات yt-dlp ──────────────────────────────────────────────────────────
 yt_opts_base = {
     "cookies": COOKIES_FILE,
     "user_agent": USER_AGENT,
@@ -59,7 +52,6 @@ yt_opts_base = {
 if PROXY:
     yt_opts_base["proxy"] = PROXY
 
-# ── يوتيوب API (إذا استُخدم PLAYLIST_ID) ───────────────────────────────────
 def authenticate():
     if not PLAYLIST_ID:
         return None
@@ -85,37 +77,30 @@ def playlist_urls(y, pid):
         if not nxt: break
     return vids
 
-# ── أدوات مساعدة ───────────────────────────────────────────────────────────
 def clean(u):
     m = re.search(r"(?:v=|youtu\.be/)([\w-]{11})", u)
     return f"https://www.youtube.com/watch?v={m.group(1)}" if m else None
 
 def video_info(u):
     try:
-        return yt_dlp.YoutubeDL(yt_opts_base | {"quiet": True,
-                                                "skip_download": True,
-                                                "forcejson": True}).extract_info(u, download=False)
+        return yt_dlp.YoutubeDL(yt_opts_base | {"quiet": True, "skip_download": True, "forcejson": True}).extract_info(u, download=False)
     except Exception as e:
         print(f"⚠️ تعذّر معلومات {u}: {e}")
         return {"duration": 0}
 
 def prefetch(u, path):
-    opts = yt_opts_base | {"merge_output_format": "mp4",
-                           "outtmpl": path,
-                           "quiet": True}
+    opts = yt_opts_base | {"merge_output_format": "mp4", "outtmpl": path, "quiet": True}
     try:
         yt_dlp.YoutubeDL(opts).download([u]); return True
     except Exception as e:
         print(f"❌ فشل تحميل {u}: {e}"); return False
 
-# ── إعداد أمر FFmpeg حسب وضع الخادم ────────────────────────────────────────
 def build_ffmpeg_cmd(path):
-    if FREE_RENDER_MODE:                     # إعدادات أخف: 360p ~750 kbps
+    if FREE_RENDER_MODE:
         vf, preset, vb, ab = "scale=-2:360,fps=24", "ultrafast", "700k", "64k"
-    else:                                    # إعدادات أعلى جودة 720p
+    else:
         vf, preset, vb, ab = "scale=-2:720,fps=30", "veryfast", "2500k", "128k"
-
-    buf = str(int(vb.rstrip('k')) * 2) + "k"
+    buf = str(int(vb.rstrip("k")) * 2) + "k"
     return [
         "ffmpeg", "-re", "-i", path,
         "-vf", vf,
@@ -130,20 +115,17 @@ def stream(path):
     print("📤 FFmpeg:", " ".join(cmd))
     return subprocess.Popen(cmd)
 
-# ── الدالة الرئيسيّة ───────────────────────────────────────────────────────
 def main():
     if not STREAM_KEY:
         return print("⚠️ STREAM_KEY غير مضاف.")
 
-    # 1) تحضير قائمة الروابط
     if PLAYLIST_ID:
-        yt   = authenticate()
-        raw  = playlist_urls(yt, PLAYLIST_ID)
+        yt = authenticate()
+        raw = playlist_urls(yt, PLAYLIST_ID)
     else:
         if not os.path.exists(VIDEO_FILE):
             return print("⚠️ videos.txt غير موجود.")
         raw = [l.strip() for l in open(VIDEO_FILE, encoding="utf-8") if l.strip()]
-
     urls = list(filter(None, map(clean, raw)))
     if not urls:
         return print("⚠️ لا روابط صالحة.")
@@ -151,34 +133,34 @@ def main():
 
     cache = tempfile.mkdtemp(prefix="ytcache_")
 
-    # 2) دورة البث
     for i, url in enumerate(urls):
         path = os.path.join(cache, f"v{i}.mp4")
+
+        # تحميل الفيديو قبل أي شيء
         if not os.path.exists(path):
-            print(f"⬇️ تحميل {i+1}/{len(urls)}")
+            print(f"⬇️ تحميل الفيديو {i+1}")
             if not prefetch(url, path):
                 continue
 
         dur = video_info(url).get("duration", 0) or 0
 
-        print(f"⏳ بَفر {BUFFER_DELAY}s قبل رفع RTMP لضمان الاستقرار…")
+        print(f"⏳ بَفر {BUFFER_DELAY}s قبل البث…")
         time.sleep(BUFFER_DELAY)
 
         proc = stream(path)
         print(f"🚀 بدأ البث للفيديو {i+1}")
-
-        # حمّل التالي أثناء العرض
-        if i + 1 < len(urls):
-            nxt_path = os.path.join(cache, f"v{i+1}.mp4")
-            if not os.path.exists(nxt_path):
-                prefetch(urls[i+1], nxt_path)
-
         time.sleep(dur)
         proc.terminate()
-        print("✅ انتهى بث الفيديو الحالي.")
+        print("✅ انتهى بث الفيديو.")
 
-    print("🏁 اكتمل بث جميع الفيديوهات.")
+        # تحميل التالي بعد انتهاء البث
+        if i + 1 < len(urls):
+            next_path = os.path.join(cache, f"v{i+1}.mp4")
+            if not os.path.exists(next_path):
+                print(f"⬇️ تحميل الفيديو التالي {i+2}")
+                prefetch(urls[i+1], next_path)
 
-# ───────────────────────────────────────────────────────────────────────────
+    print("🏁 تم بث جميع الفيديوهات بنجاح.")
+
 if __name__ == "__main__":
     main()
