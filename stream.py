@@ -2,9 +2,9 @@
 # coding=utf-8
 """
 Stream playlist / videos.txt to YouTube Live.
-– cookies taken from COOKIES_B64 (base64 string in env)
-– supports PLAYLIST_ID (YouTube API) or videos.txt
-– downloads next video 60 s before current ends
+– cookies taken من COOKIES_B64 (base64 في env)
+– يدعم PLAYLIST_ID (YouTube API) أو videos.txt
+– ينزّل الفيديو التالي قبل 60 ثانية من انتهاء الحالي
 """
 
 import os, base64, pickle, subprocess, time, re, tempfile
@@ -13,7 +13,7 @@ from googleapiclient.discovery   import build
 from googleapiclient.errors      import HttpError
 import yt_dlp
 
-# ═══════ 1) إعداد البيئة ═══════
+# ═══════ إعداد البيئة ═══════
 TOKEN_PATH    = "creds/token.pickle"
 CLIENT_SECRET = "secrets/client_secret.json"
 VIDEO_FILE    = "videos.txt"
@@ -32,11 +32,11 @@ if os.getenv("RENDER") != "true":
     from dotenv import load_dotenv
     load_dotenv()
 
-# ═══════ 2) الكوكيز من COOKIES_B64 ═══════
+# ═══════ الكوكيز من COOKIES_B64 ═══════
 def decode_cookies():
     b64 = os.getenv("COOKIES_B64", "")
     if not b64:
-        raise RuntimeError("❌ COOKIES_B64 غير مضاف في البيئة.")
+        raise RuntimeError("❌ COOKIES_B64 غير مضاف.")
     path = tempfile.NamedTemporaryFile(delete=False, suffix=".txt").name
     with open(path, "wb") as f:
         f.write(base64.b64decode(b64))
@@ -44,7 +44,7 @@ def decode_cookies():
 
 COOKIES_FILE = decode_cookies()
 
-# ═══════ 3) خيارات yt-dlp الافتراضية ═══════
+# ═══════ إعداد yt-dlp ═══════
 yt_opts_base = {
     "cookies": COOKIES_FILE,
     "user_agent": USER_AGENT,
@@ -59,7 +59,7 @@ yt_opts_base = {
 if PROXY:
     yt_opts_base["proxy"] = PROXY
 
-# ═══════ 4) وظائف مساعدة ═══════
+# ═══════ وظائف مساعدة ═══════
 def authenticate():
     creds = None
     if os.path.exists(TOKEN_PATH):
@@ -111,7 +111,9 @@ def prefetch(url, path):
     ]
     if PROXY:
         cmd += ["--proxy", PROXY]
-    return subprocess.Popen(cmd)
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    return subprocess.Popen(cmd, env=env)
 
 def stream(path_or_url):
     cmd = [
@@ -125,21 +127,10 @@ def stream(path_or_url):
     print(" ".join(cmd))
     return subprocess.Popen(cmd)
 
-def test_local_stream():
-    cmd = [
-        "ffmpeg", "-re", "-i", "test.mp4",
-        "-c:v", "libx264", "-preset", "veryfast",
-        "-g", "60", "-keyint_min", "60",
-        "-c:a", "aac",
-        "-f", "flv", f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"
-    ]
-    print("📡 تشغيل بث محلي لاختبار RTMP…")
-    subprocess.run(cmd)
-
-# ═══════ 5) الدالة الرئيسة ═══════
+# ═══════ الدالة الرئيسية ═══════
 def main():
     if not STREAM_KEY:
-        print("⚠️ STREAM_KEY غير مضاف في البيئة.")
+        print("⚠️ STREAM_KEY غير مضاف.")
         return
 
     if PLAYLIST_ID:
@@ -157,7 +148,7 @@ def main():
     if not urls:
         print("⚠️ لا توجد روابط صالحة.")
         return
-    print(f"✅ عدد الفيديوهات الجاهزة للبث: {len(urls)}")
+    print(f"✅ عدد الفيديوهات الجاهزة: {len(urls)}")
 
     cache_dir = tempfile.mkdtemp(prefix="yt_cache_")
 
@@ -167,13 +158,18 @@ def main():
         cur_path = os.path.join(cache_dir, f"video_{idx}.mp4")
 
         if not os.path.exists(cur_path):
-            print(f"⬇️ تنزيل الفيديو {idx+1}/{len(urls)}")
+            print(f"⬇️ تحميل الفيديو {idx+1}/{len(urls)}")
             prefetch(url, cur_path).wait()
 
+        if not os.path.exists(cur_path):
+            print(f"❌ فشل تحميل الفيديو: {url}")
+            continue
+
+        print(f"✅ الفيديو محفوظ: {cur_path}")
         print(f"🚀 بدء البث: {url}")
         proc_stream = stream(cur_path)
 
-        # تحميل التالي قبل دقيقة من النهاية
+        # تحميل التالي قبل دقيقة من نهاية الحالي
         if idx + 1 < len(urls):
             next_url  = urls[idx + 1]
             next_path = os.path.join(cache_dir, f"video_{idx+1}.mp4")
@@ -190,9 +186,9 @@ def main():
             time.sleep(duration)
 
         proc_stream.terminate()
-        print("✅ انتهى بث الفيديو الحالي.")
+        print("✅ تم بث الفيديو الحالي.")
 
-    print("🏁 تم بث جميع الفيديوهات بنجاح.")
+    print("🏁 اكتمل بث كل الفيديوهات.")
 
 # ═══════
 if __name__ == "__main__":
