@@ -3,29 +3,29 @@
 """
 Stream playlist / videos.txt to YouTube Live.
 – cookies taken from COOKIES_B64 (base64 string in env)
-– supports PLAYLIST_ID (YouTube API) أو ملف videos.txt
+– supports PLAYLIST_ID (YouTube API) or videos.txt
 – pre-downloads next video 60 s before current ends
 """
 
-import os, base64, pickle, subprocess, time, re, tempfile, random
+import os, base64, pickle, subprocess, time, re, tempfile
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery   import build
 from googleapiclient.errors      import HttpError
 import yt_dlp
 
 # ══════════════ 1) ثوابت ومتغيّرات البيئة ═════════════════
-TOKEN_PATH   = "creds/token.pickle"
-CLIENT_SECRET= "secrets/client_secret.json"
-VIDEO_FILE   = "videos.txt"
-SCOPES       = ["https://www.googleapis.com/auth/youtube.readonly"]
+TOKEN_PATH    = "creds/token.pickle"
+CLIENT_SECRET = "secrets/client_secret.json"
+VIDEO_FILE    = "videos.txt"
+SCOPES        = ["https://www.googleapis.com/auth/youtube.readonly"]
 
-STREAM_KEY   = os.getenv("STREAM_KEY")
-PLAYLIST_ID  = os.getenv("PLAYLIST_ID")
-PROXY        = os.getenv("PROXY_URL")
+STREAM_KEY    = os.getenv("STREAM_KEY")
+PLAYLIST_ID   = os.getenv("PLAYLIST_ID")
+PROXY         = os.getenv("PROXY_URL")
 
-USER_AGENT   = (
+USER_AGENT = (
     "Mozilla/5.0 (Linux; Android 11; Pixel 5) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Mobile Safari/537.36"
+    "AppleWebKit/537.36 (KHTML, مثل Gecko) Chrome/122 Mobile Safari/537.36"
 )
 
 if os.getenv("RENDER") != "true":
@@ -46,14 +46,14 @@ COOKIES_FILE = decode_cookies()
 
 # ══════════════ 3) إعداد خيارات yt-dlp الافتراضيّة ════════
 yt_opts_base = {
-    "cookies":      COOKIES_FILE,
-    "user_agent":   USER_AGENT,
-    "format":       "bestvideo[height<=720]+bestaudio/best",
-    "sleep_interval":       5,
-    "max_sleep_interval":   15,
-    "retries":      10,
-    "progress":     False,
-    "no_color":     True,
+    "cookies": COOKIES_FILE,
+    "user_agent": USER_AGENT,
+    "format": "bestvideo[height<=720]+bestaudio/best",
+    "sleep_interval": 5,
+    "max_sleep_interval": 15,
+    "retries": 10,
+    "progress": False,
+    "no_color": True,
     "concurrent_fragment_downloads": 1,
 }
 if PROXY:
@@ -69,7 +69,7 @@ def authenticate():
         if os.getenv("RENDER") == "true":
             print("⚠️  token.pickle مفقود داخل Render.")
             return None
-        flow  = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET, SCOPES)
+        flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET, SCOPES)
         creds = flow.run_local_server(port=0)
         os.makedirs(os.path.dirname(TOKEN_PATH), exist_ok=True)
         with open(TOKEN_PATH, "wb") as f:
@@ -104,7 +104,6 @@ def video_info(url):
         return {"duration": 0}
 
 def prefetch(url, path):
-    """تنزيل الفيديو القادم بخلفيّة صامتة (mp4)"""
     cmd = [
         "yt-dlp", "-f", yt_opts_base["format"], "--merge-output-format", "mp4",
         "--cookies", COOKIES_FILE, "--user-agent", USER_AGENT,
@@ -115,7 +114,6 @@ def prefetch(url, path):
     return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
 def stream(path_or_url):
-    """بث ملف/رابط مباشرةً إلى YouTube Live"""
     cmd = [
         "ffmpeg", "-re", "-i", path_or_url,
         "-c:v", "copy", "-c:a", "aac",
@@ -129,7 +127,6 @@ def main():
         print("⚠️  STREAM_KEY غير مضاف في البيئة")
         return
 
-    # ❶ تحضير قائمة الروابط
     if PLAYLIST_ID:
         yt = authenticate()
         if not yt:
@@ -145,50 +142,42 @@ def main():
     if not urls:
         print("⚠️  لا توجد روابط صالحة")
         return
-    print(f"✅ {len(urls)} فيديو جاهز للبث")
+    print(f"✅ عدد الفيديوهات الجاهزة للبث: {len(urls)}")
 
-    # ❷ مجلّد مؤقّت للفيديوهات المسبقة
     cache_dir = tempfile.mkdtemp(prefix="yt_cache_")
-    pre_dl_proc = None
 
     for idx, url in enumerate(urls):
-        info     = video_info(url)
+        info = video_info(url)
         duration = info.get("duration", 0) or 0
         cur_path = os.path.join(cache_dir, f"video_{idx}.mp4")
 
-        # حمّل الملف إن لم يكن موجودًا
         if not os.path.exists(cur_path):
             print(f"⬇️  تنزيل الفيديو {idx+1}/{len(urls)}")
             prefetch(url, cur_path).wait()
 
-        # أبـدأ البث
         print(f"🚀 بدء البث: {url}")
         proc_stream = stream(cur_path)
 
-        # حضّر الفيديو التالي
+        # إذا في فيديو بعده، حضّره قبل دقيقة من نهاية الحالي
         if idx + 1 < len(urls):
             next_url  = urls[idx + 1]
             next_path = os.path.join(cache_dir, f"video_{idx+1}.mp4")
-            time.sleep(max(duration - 60, 0))   # انتظر حتى دقيقة قبل النهاية
+
+            # نبدأ التحميل قبل دقيقة من نهاية الحالي
+            time.sleep(max(duration - 60, 0))
 
             if not os.path.exists(next_path):
-                print("⏳ تنزيل الفيديو التالي…")
+                print("⏳ تحميل الفيديو التالي…")
                 pre_dl_proc = prefetch(next_url, next_path)
+                pre_dl_proc.wait()
+            # نكمل الدقيقة الأخيرة قبل التبديل
+            time.sleep(60)
         else:
-            # آخر فيديو
+            # آخر فيديو: ننتظر مدّته كاملة
             time.sleep(duration)
 
-        # انتظر آخر 60 ثانية أو صفر
-        time.sleep(60 if duration > 60 else 0)
-
-        # أوقف البث
         proc_stream.terminate()
         print("✅ انتهى بث الفيديو الحالي")
-
-        # تأكد من اكتمال أي تحميل معلق
-        if pre_dl_proc:
-            pre_dl_proc.wait()
-            pre_dl_proc = None
 
     print("🏁 تم بث جميع الفيديوهات بنجاح")
 
