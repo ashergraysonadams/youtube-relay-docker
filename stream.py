@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 # coding=utf-8
+
 """
 Stream playlist / videos.txt to YouTube Live.
-– cookies taken من COOKIES_B64 (base64 في env)
-– يدعم PLAYLIST_ID (YouTube API) أو videos.txt
-– ينزّل الفيديو التالي قبل 60 ثانية من انتهاء الحالي
+- Cookies via COOKIES_B64 env var (base64)
+- Supports PLAYLIST_ID (via YouTube API) or local videos.txt
+- Downloads next video 60s before current ends
 """
 
-import os, base64, pickle, subprocess, time, re, tempfile
+import os, base64, pickle, time, re, tempfile
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery   import build
 from googleapiclient.errors      import HttpError
 import yt_dlp
+import subprocess
 
 # ═══════ إعداد البيئة ═══════
 TOKEN_PATH    = "creds/token.pickle"
@@ -104,16 +106,19 @@ def video_info(url):
         return {"duration": 0}
 
 def prefetch(url, path):
-    cmd = [
-        "yt-dlp", "-f", yt_opts_base["format"], "--merge-output-format", "mp4",
-        "--cookies", COOKIES_FILE, "--user-agent", USER_AGENT,
-        "-o", path, url, "--quiet", "--retries", "10",
-    ]
-    if PROXY:
-        cmd += ["--proxy", PROXY]
-    env = os.environ.copy()
-    env["PYTHONIOENCODING"] = "utf-8"
-    return subprocess.Popen(cmd, env=env)
+    opts = yt_opts_base | {
+        "merge_output_format": "mp4",
+        "outtmpl": path,
+        "quiet": True,
+        "retries": 10,
+    }
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.download([url])
+        return True
+    except Exception as e:
+        print(f"❌ فشل تحميل الفيديو {url}: {e}")
+        return False
 
 def stream(path_or_url):
     cmd = [
@@ -159,17 +164,16 @@ def main():
 
         if not os.path.exists(cur_path):
             print(f"⬇️ تحميل الفيديو {idx+1}/{len(urls)}")
-            prefetch(url, cur_path).wait()
+            success = prefetch(url, cur_path)
+            if not success or not os.path.exists(cur_path):
+                print(f"❌ فشل حفظ الفيديو: {cur_path}")
+                continue
 
-        if not os.path.exists(cur_path):
-            print(f"❌ فشل تحميل الفيديو: {url}")
-            continue
-
-        print(f"✅ الفيديو محفوظ: {cur_path}")
         print(f"🚀 بدء البث: {url}")
+        print(f"✅ الملف جاهز: {cur_path}")
         proc_stream = stream(cur_path)
 
-        # تحميل التالي قبل دقيقة من نهاية الحالي
+        # تحميل التالي مسبقًا
         if idx + 1 < len(urls):
             next_url  = urls[idx + 1]
             next_path = os.path.join(cache_dir, f"video_{idx+1}.mp4")
@@ -178,17 +182,16 @@ def main():
 
             if not os.path.exists(next_path):
                 print("⏳ تحميل الفيديو التالي…")
-                pre_dl_proc = prefetch(next_url, next_path)
-                pre_dl_proc.wait()
+                prefetch(next_url, next_path)
 
             time.sleep(60)
         else:
             time.sleep(duration)
 
         proc_stream.terminate()
-        print("✅ تم بث الفيديو الحالي.")
+        print("✅ انتهى بث الفيديو الحالي.")
 
-    print("🏁 اكتمل بث كل الفيديوهات.")
+    print("🏁 تم بث كل الفيديوهات.")
 
 # ═══════
 if __name__ == "__main__":
