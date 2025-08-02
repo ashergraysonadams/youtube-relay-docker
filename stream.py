@@ -95,17 +95,21 @@ def prefetch(u, path):
     except Exception as e:
         print(f"❌ فشل تحميل {u}: {e}"); return False
 
+# ── 🚀 أهم تعديل: إضافة -keyint / -g / -sc_threshold ───────────────────────
 def build_ffmpeg_cmd(path):
     if FREE_RENDER_MODE:
-        vf, preset, vb, ab = "scale=-2:360,fps=24", "ultrafast", "700k", "64k"
+        vf, preset, vb, ab, fps = "scale=-2:360,fps=24", "ultrafast", "700k", "64k", 24
     else:
-        vf, preset, vb, ab = "scale=-2:720,fps=30", "veryfast", "2500k", "128k"
-    buf = str(int(vb.rstrip("k")) * 2) + "k"
+        vf, preset, vb, ab, fps = "scale=-2:720,fps=30", "veryfast", "2500k", "128k", 30
+
+    buf   = str(int(vb.rstrip("k")) * 2) + "k"
+    gop   = str(fps * 4)  # keyframe كل 4 ثوانٍ
     return [
         "ffmpeg", "-re", "-i", path,
         "-vf", vf,
         "-c:v", "libx264", "-preset", preset, "-tune", "zerolatency",
         "-b:v", vb, "-maxrate", vb, "-bufsize", buf,
+        "-keyint", gop, "-g", gop, "-sc_threshold", "0",
         "-c:a", "aac", "-b:a", ab,
         "-f", "flv", f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"
     ]
