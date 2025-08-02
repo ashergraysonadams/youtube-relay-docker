@@ -6,6 +6,7 @@ services:
     plan: starter
     dockerfilePath: ./Dockerfile
     autoDeploy: true
+    startCommand: python3 stream.py
     envVars:
       - key: STREAM_KEY
         value: your_actual_youtube_stream_key
